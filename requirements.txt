@@ -1,0 +1,5 @@
+playwright
+pyyaml
+requests
+slack_sdk
+twilio
