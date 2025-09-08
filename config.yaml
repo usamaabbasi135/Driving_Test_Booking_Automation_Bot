@@ -1,0 +1,15 @@
+credentials:
+  username: "username"
+  password: "password"
+
+urls:
+  login_page: "https://driver-services.dvsa.gov.uk/login"
+  booking_page: "https://driver-services.dvsa.gov.uk/book-pupil-driving-test"
+
+booking:
+  category: "car"
+  instructor: "no"
+  centres:
+    - "London (Croydon)"
+    - "Manchester (Salford)"
+    - "Birmingham (South Yardley)"
