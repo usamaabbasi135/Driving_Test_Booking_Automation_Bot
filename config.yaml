@@ -13,3 +13,11 @@ booking:
     - "London (Croydon)"
     - "Manchester (Salford)"
     - "Birmingham (South Yardley)"
+
+notifications:
+  slack_token: "xoxb-your-slack-bot-token"
+  slack_channel: "#dvsa-alerts"
+  twilio_sid: "your-twilio-sid"
+  twilio_token: "your-twilio-token"
+  twilio_number: "+14155238886" # Twilio sandbox WhatsApp number
+  client_number: "+447xxxxxxxxx" # Client WhatsApp
