@@ -10,6 +10,12 @@ CONFIG_PATH = "config.yaml"
 CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 PROFILE_PATH = r"C:\chrome-profile"
 
+PROFILE_PATH_NEW = r"C:\chrome-profile-new"  # Add new profile path
+
+# Change these at the top of your file
+EDGE_PATH = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+PROFILE_PATH_2 = r"C:\edge-profile"  # Use different profile path for Edge
+
 async def human_wait(min_sec=2, max_sec=5):
     await asyncio.sleep(random.uniform(min_sec, max_sec))
 
@@ -27,6 +33,39 @@ def launch_chrome():
     ]
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(5)
+
+def launch_edge():
+    """Launch Edge with remote debugging enabled"""
+    print("🚀 Launching Edge with remote debugging...")
+    cmd = [
+        EDGE_PATH,
+        "--remote-debugging-port=9222",
+        f"--user-data-dir={PROFILE_PATH_2}"
+    ]
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(5)
+
+# Add this function after your other helper functions
+async def handle_already_signed_in_page(page):
+    """Handle the 'You are already signed in' page"""
+    try:
+        already_signed_in = await page.locator("h1:has-text('You are already signed in')").count()
+        
+        if already_signed_in > 0:
+            print("📋 Handling 'You are already signed in' page...")
+            await page.click("input#confirm-Stay")
+            print("✅ Selected 'Stay signed in'")
+            await page.click("button#continue")
+            print("✅ Clicked Continue")
+            await page.wait_for_load_state("networkidle")
+            await asyncio.sleep(2)
+            return True
+        
+        return False
+        
+    except Exception as e:
+        print(f"❌ Error handling signed in page: {e}")
+        return False
 
 async def start_now_and_login():
     """Login flow + open booking form in new tab"""
@@ -92,6 +131,7 @@ async def start_now_and_login():
     await new_page.goto(booking_url)
     await new_page.wait_for_load_state("domcontentloaded")
 
+    await handle_already_signed_in_page(new_page)
     # Step 5: Confirm form exists
     try:
         await new_page.wait_for_selector("form#slotSearchCommand", timeout=20000)

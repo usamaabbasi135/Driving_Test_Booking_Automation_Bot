@@ -1,7 +1,73 @@
 import asyncio
 from playwright.async_api import Page
-from src.reservation import handle_reservation_page,reserve_all_available_slots,handle_successful_reservation_and_continue
-from src.discord_notification import handle_booking_success,extract_booking_details,send_discord_notification
+from src.reservation import handle_reservation_page,handle_successful_reservation_and_continue,instant_reserve,verify_booking_success
+from src.discord_notification import handle_booking_success
+
+# Updated main booking function
+async def booking_system_with_continuous_search(page: Page, centres: list[str], attempts_per_batch: int = 50, 
+                                              break_minutes: int = 10, discord_webhook: str = None,
+                                              max_bookings: int = 5):
+    """
+    Booking system that continues searching after each successful booking
+    """
+    total_centres = len(centres)
+    batch_size = 3
+    cycle_count = 1
+    bookings_made = 0
+    
+    while bookings_made < max_bookings:
+        print(f"\nCYCLE {cycle_count} - Bookings made: {bookings_made}/{max_bookings}")
+        current_batch_start = 0
+        
+        while current_batch_start < total_centres and bookings_made < max_bookings:
+            current_batch_end = min(current_batch_start + batch_size, total_centres)
+            current_batch = centres[current_batch_start:current_batch_end]
+            
+            batch_number = (current_batch_start // batch_size) + 1
+            total_batches = (total_centres + batch_size - 1) // batch_size
+            print(f"\nCycle {cycle_count} - Batch {batch_number}/{total_batches}: {current_batch}")
+            
+            # Only remove centres if no bookings are already made
+            if bookings_made == 0:
+                await remove_all_test_centres(page)
+                await asyncio.sleep(2)
+                
+                added_count = await add_test_centres_sequential(page, current_batch)
+                if added_count == 0:
+                    current_batch_start += batch_size
+                    continue
+            
+            slot_found = await search_for_available_slots(page, max_attempts=attempts_per_batch)
+            
+            if slot_found:
+                bookings_made += 1
+                print(f"✅ BOOKING #{bookings_made} SUCCESSFUL!")
+                
+                # Send notification and continue
+                result = await handle_successful_reservation_and_continue(page, discord_webhook)
+                
+                if result == "CONTINUE_SEARCH":
+                    print(f"🔄 Continuing to search for booking #{bookings_made + 1}...")
+                    continue  # Stay in same batch, keep searching
+                else:
+                    return True  # Exit if can't continue
+            
+            current_batch_start += batch_size
+        
+        if bookings_made < max_bookings:
+            print(f"\nCycle {cycle_count} completed - {bookings_made} bookings made")
+            print(f"Waiting {break_minutes} minutes before next cycle...")
+            
+            for remaining in range(break_minutes * 60, 0, -60):
+                minutes_left = remaining // 60
+                print(f"Next cycle in {minutes_left} minute(s)...")
+                await asyncio.sleep(60)
+            
+            cycle_count += 1
+    
+    print(f"🎉 MAXIMUM BOOKINGS REACHED: {bookings_made} slots reserved!")
+    return True
+
 
 async def add_test_centres_sequential(page: Page, centres: list[str], max_to_add: int = 3):
     """
@@ -57,35 +123,39 @@ async def add_test_centres_sequential(page: Page, centres: list[str], max_to_add
 
     
 async def search_for_available_slots(page, max_attempts: int = 100, discord_webhook: str = None):
-    """
-    Updated search function with Discord notifications
-    """
+    """Updated search function with Discord notifications and verification"""
     print("🔍 Starting search for available slots...")
     
     for attempt in range(1, max_attempts + 1):
         try:
             print(f"🔄 Attempt {attempt}/{max_attempts}: Checking calendar...")
-            
             green_boxes = await check_for_green_calendar_boxes(page)
             
             if green_boxes:
                 print("🎯 GREEN BOX FOUND! Clicking...")
                 await green_boxes[0].click()
-                await asyncio.sleep(3)
+                await asyncio.sleep(3)  # Wait longer for page to load
                 
-                # Try to reserve slots
-                if await reserve_all_available_slots(page):
-                    print("🚀 SLOTS RESERVED!")
+                # Try instant reserve first
+                if await instant_reserve(page):
+                    print("🚀 RESERVE BUTTON CLICKED!")
                     
-                    # Send Discord notifications
+                    # Wait and verify booking was actually successful
+                    await asyncio.sleep(3)
+                    
                     if discord_webhook:
-                        await handle_booking_success(page, discord_webhook)
-                    
-                    return True
+                        success = await handle_booking_success(page, discord_webhook)
+                        if success:
+                            print("✅ Notification sent for confirmed booking")
+                            return True
+                        else:
+                            print("⚠️ No notification sent - booking not confirmed")
                 
-                # If reservation failed, return to search
-                result = await handle_reservation_page(page)
-                if result == "RETURNED_TO_SEARCH":
+                # Fallback to handle_reservation_page
+                result = await handle_reservation_page(page, discord_webhook)
+                if result == "RESERVATIONS_MADE":
+                    return True
+                elif result == "RETURNED_TO_SEARCH":
                     continue
                 else:
                     break
@@ -168,67 +238,3 @@ async def remove_all_test_centres(page: Page):
         print(f"❌ Error removing test centres: {e}")
         return False
 
-# Updated main booking function
-async def booking_system_with_continuous_search(page: Page, centres: list[str], attempts_per_batch: int = 50, 
-                                              break_minutes: int = 10, discord_webhook: str = None,
-                                              max_bookings: int = 5):
-    """
-    Booking system that continues searching after each successful booking
-    """
-    total_centres = len(centres)
-    batch_size = 3
-    cycle_count = 1
-    bookings_made = 0
-    
-    while bookings_made < max_bookings:
-        print(f"\nCYCLE {cycle_count} - Bookings made: {bookings_made}/{max_bookings}")
-        current_batch_start = 0
-        
-        while current_batch_start < total_centres and bookings_made < max_bookings:
-            current_batch_end = min(current_batch_start + batch_size, total_centres)
-            current_batch = centres[current_batch_start:current_batch_end]
-            
-            batch_number = (current_batch_start // batch_size) + 1
-            total_batches = (total_centres + batch_size - 1) // batch_size
-            print(f"\nCycle {cycle_count} - Batch {batch_number}/{total_batches}: {current_batch}")
-            
-            # Only remove centres if no bookings are already made
-            if bookings_made == 0:
-                await remove_all_test_centres(page)
-                await asyncio.sleep(2)
-                
-                added_count = await add_test_centres_sequential(page, current_batch)
-                if added_count == 0:
-                    current_batch_start += batch_size
-                    continue
-            
-            slot_found = await search_for_available_slots(page, max_attempts=attempts_per_batch)
-            
-            if slot_found:
-                bookings_made += 1
-                print(f"✅ BOOKING #{bookings_made} SUCCESSFUL!")
-                
-                # Send notification and continue
-                result = await handle_successful_reservation_and_continue(page, discord_webhook)
-                
-                if result == "CONTINUE_SEARCH":
-                    print(f"🔄 Continuing to search for booking #{bookings_made + 1}...")
-                    continue  # Stay in same batch, keep searching
-                else:
-                    return True  # Exit if can't continue
-            
-            current_batch_start += batch_size
-        
-        if bookings_made < max_bookings:
-            print(f"\nCycle {cycle_count} completed - {bookings_made} bookings made")
-            print(f"Waiting {break_minutes} minutes before next cycle...")
-            
-            for remaining in range(break_minutes * 60, 0, -60):
-                minutes_left = remaining // 60
-                print(f"Next cycle in {minutes_left} minute(s)...")
-                await asyncio.sleep(60)
-            
-            cycle_count += 1
-    
-    print(f"🎉 MAXIMUM BOOKINGS REACHED: {bookings_made} slots reserved!")
-    return True

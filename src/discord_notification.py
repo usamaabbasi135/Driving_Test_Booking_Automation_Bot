@@ -3,42 +3,27 @@ import json
 from datetime import datetime
 import asyncio
 
+async def verify_booking_exists(page):
+    """Check if booking actually exists in the reserved tests sidebar"""
+    try:
+        # Check for countdown timer
+        timer = await page.locator("#minutesToTimeout").count()
+        if timer > 0:
+            return True
+            
+        # Check for reserved test in sidebar
+        reserved_test = await page.locator("td[headers='dateTime']").count()
+        return reserved_test > 0
+        
+    except:
+        return False
+
 async def send_discord_notification(webhook_url: str, booking_details: dict, page_url: str = None):
-    """
-    Enhanced Discord notification with all extracted details
-    """
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    embed = {
-        "title": "🎯 DRIVING TEST BOOKING CONFIRMED",
-        "description": "**URGENT:** A driving test slot has been successfully reserved. Complete payment immediately!",
-        "color": 0x00FF00,
-        "timestamp": datetime.now().isoformat(),
-        "fields": [
-            {"name": "📍 Test Centre", "value": booking_details.get('centre', 'Not specified'), "inline": True},
-            {"name": "📅 Test Date", "value": booking_details.get('formatted_date', booking_details.get('date', 'Not specified')), "inline": True},
-            {"name": "🕐 Test Time", "value": booking_details.get('time', 'Not specified'), "inline": True},
-            {"name": "💰 Test Fee", "value": "£62.00 (Standard Car Test)", "inline": True},
-            {"name": "🔢 Slot ID", "value": booking_details.get('slot_id', 'Not available'), "inline": True},
-            {"name": "⏰ Time Remaining", "value": booking_details.get('time_remaining', '15 minutes'), "inline": True},
-            {"name": "📋 Full Date & Time", "value": booking_details.get('full_datetime', 'Check booking page'), "inline": False},
-            {"name": "🔗 Execution Reference", "value": booking_details.get('reference', 'Check booking page'), "inline": True},
-            {"name": "⚡ Status", "value": "**RESERVED - PAYMENT PENDING**", "inline": True},
-            {"name": "⚠️ CRITICAL REMINDER", "value": f"You have **{booking_details.get('time_remaining', '15 minutes')}** to complete payment or the slot will be released!", "inline": False}
-        ],
-        "footer": {"text": f"Booking System • {current_time}"}
-    }
-    
-    if page_url:
-        embed["fields"].append({
-            "name": "🔗 Complete Payment Now",
-            "value": f"[Click here to complete payment]({page_url})",
-            "inline": False
-        })
-    
+    # Simple notification format
+    message = f"{booking_details.get('full_datetime', 'Unknown')}\t{booking_details.get('test_type', 'Car standard')}\t{booking_details.get('centre', 'Unknown')}\t£62.00"
+
     payload = {
-        "content": "@everyone **DRIVING TEST RESERVED - PAYMENT REQUIRED NOW**",
-        "embeds": [embed]
+    "content": f"**BOOKING CONFIRMED**\n```{message}```"
     }
     
     try:
@@ -80,6 +65,16 @@ async def extract_booking_details(page):
         except:
             booking_details['full_datetime'] = "Check booking page"
             booking_details['time'] = "Check booking page"
+
+        # Get test type
+        try:
+            test_type_cell = await page.locator("td[headers='slotType']").text_content()
+            if test_type_cell:
+                booking_details['test_type'] = test_type_cell.strip()
+            else:
+                booking_details['test_type'] = "Car standard"
+        except:
+            booking_details['test_type'] = "Car standard"
         
         # Extract test centre from reserved tests table
         try:
@@ -128,7 +123,8 @@ async def extract_booking_details(page):
             'fee': '£62.00',
             'reference': 'Check booking page',
             'time_remaining': '15 minutes',
-            'slot_id': 'Not available'
+            'slot_id': 'Not available',
+            'test_type': 'Car standard'
         }
 
 
@@ -137,6 +133,14 @@ async def handle_booking_success(page, discord_webhook_url: str, client_webhook_
     Handle successful booking with professional notifications
     """
     print("🎉 Booking successful! Sending notifications...")
+    
+    # Verify booking exists first
+    if not await verify_booking_exists(page):
+        print("❌ No confirmed booking found - not sending notification")
+        return False
+
+    # Wait a moment for page to fully load
+    await asyncio.sleep(2)
     
     # Extract booking information
     booking_details = await extract_booking_details(page)
@@ -163,4 +167,3 @@ async def handle_booking_success(page, discord_webhook_url: str, client_webhook_
     print("="*60)
     
     return admin_sent and client_sent
-
