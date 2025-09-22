@@ -67,10 +67,15 @@ async def handle_already_signed_in_page(page):
         print(f"❌ Error handling signed in page: {e}")
         return False
 
-async def start_now_and_login():
+async def start_now_and_login_with_browser_type(browser_type):
     """Login flow + open booking form in new tab"""
     config = load_config()
-    launch_chrome()
+    if browser_type == "chrome":
+        launch_chrome()
+        print("🔗 Connecting to launched Chrome...")
+    else:
+        launch_edge()
+        print("🔗 Connecting to launched Edge...")
 
     stealth = Stealth()
     p = await stealth.use_async(async_playwright()).__aenter__()

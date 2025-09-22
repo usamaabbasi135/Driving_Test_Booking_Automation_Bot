@@ -1,18 +1,18 @@
 centres:
+  # - Farnborough
+  # - Guildford
+  # - Isleworth (Fleming Way)
+  - Redhill Aerodrome
   - Belvedere (London)
   - Brentwood (London)
-  - Chertsey (London)
-  - Crawley
-  - Farnborough
-  - Guildford
-  - Isleworth (Fleming Way)
+  - Sidcup (London)
   - Mitcham (London)
   - Morden (London)
-  - Redhill Aerodrome
-  - Sidcup (London)
-  - Southall (London)
-  - Tolworth (London)
-  - Watford
-  - West Wickham (London)
-  - Wood Green (London)
+  # - Chertsey (London)
+  # - Crawley
+  # - Southall (London)
+  # - Tolworth (London)
+  # - Watford
+  # - West Wickham (London)
+  # - Wood Green (London)
   

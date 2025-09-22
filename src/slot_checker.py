@@ -2,70 +2,130 @@ import asyncio
 from playwright.async_api import Page
 from src.reservation import handle_reservation_page,handle_successful_reservation_and_continue,instant_reserve,verify_booking_success
 from src.discord_notification import handle_booking_success
+from src.browser_rotation import BrowserRotationManager
+from src.auth import start_now_and_login_with_browser_type
 
 # Updated main booking function
-async def booking_system_with_continuous_search(page: Page, centres: list[str], attempts_per_batch: int = 50, 
+async def booking_system_with_browser_rotation(page: Page, centres: list[str], attempts_per_batch: int = 50, 
                                               break_minutes: int = 10, discord_webhook: str = None,
                                               max_bookings: int = 5):
     """
-    Booking system that continues searching after each successful booking
+    Booking system with automatic browser switching every 15 minutes
     """
+    browser_manager = BrowserRotationManager()
     total_centres = len(centres)
     batch_size = 3
     cycle_count = 1
     bookings_made = 0
     
+    # Current browser session variables
+    current_browser = None
+    current_context = None
+    current_page = page
+    current_p = None
+    current_batch_start = 0
+    centres_added = False
+    
     while bookings_made < max_bookings:
         print(f"\nCYCLE {cycle_count} - Bookings made: {bookings_made}/{max_bookings}")
-        current_batch_start = 0
         
         while current_batch_start < total_centres and bookings_made < max_bookings:
+            # Check if we need to switch browsers
+            if browser_manager.should_switch_browser():
+                print("⏰ 15 minutes elapsed - switching browsers...")
+                
+                # Close current browser if exists
+                if current_browser:
+                    try:
+                        await current_browser.close()
+                        await current_p.stop()
+                    except:
+                        pass
+                
+                # Switch browser type
+                browser_manager.switch_browser()
+                
+                # Launch new browser and login
+                current_browser, current_context, current_page, current_p = await start_now_and_login_with_browser_type(browser_manager.current_browser)
+                
+                # Reset centres flag to re-add them in new browser
+                centres_added = False
+            
             current_batch_end = min(current_batch_start + batch_size, total_centres)
             current_batch = centres[current_batch_start:current_batch_end]
             
             batch_number = (current_batch_start // batch_size) + 1
             total_batches = (total_centres + batch_size - 1) // batch_size
-            print(f"\nCycle {cycle_count} - Batch {batch_number}/{total_batches}: {current_batch}")
+            print(f"\n🔍 Cycle {cycle_count} - Batch {batch_number}/{total_batches}: {current_batch}")
+            print(f"🌐 Using browser: {browser_manager.current_browser}")
             
-            # Only remove centres if no bookings are already made
-            if bookings_made == 0:
-                await remove_all_test_centres(page)
+            # Add centres if not already added or if browser switched
+            if not centres_added:
+                await remove_all_test_centres(current_page)
                 await asyncio.sleep(2)
                 
-                added_count = await add_test_centres_sequential(page, current_batch)
+                added_count = await add_test_centres_sequential(current_page, current_batch)
                 if added_count == 0:
                     current_batch_start += batch_size
                     continue
+                
+                centres_added = True
             
-            slot_found = await search_for_available_slots(page, max_attempts=attempts_per_batch)
+            # Search for slots with current browser
+            slot_found = await search_for_available_slots(current_page, max_attempts=attempts_per_batch, discord_webhook=discord_webhook)
             
             if slot_found:
                 bookings_made += 1
-                print(f"✅ BOOKING #{bookings_made} SUCCESSFUL!")
+                print(f"✅ BOOKING #{bookings_made} SUCCESSFUL on {browser_manager.current_browser}!")
                 
                 # Send notification and continue
-                result = await handle_successful_reservation_and_continue(page, discord_webhook)
+                result = await handle_successful_reservation_and_continue(current_page, discord_webhook)
                 
                 if result == "CONTINUE_SEARCH":
                     print(f"🔄 Continuing to search for booking #{bookings_made + 1}...")
-                    continue  # Stay in same batch, keep searching
+                    continue
                 else:
-                    return True  # Exit if can't continue
+                    return True
             
             current_batch_start += batch_size
+            centres_added = False  # Reset for next batch
         
         if bookings_made < max_bookings:
-            print(f"\nCycle {cycle_count} completed - {bookings_made} bookings made")
-            print(f"Waiting {break_minutes} minutes before next cycle...")
+            print(f"\n📊 Cycle {cycle_count} completed - {bookings_made} bookings made")
+            print(f"⏱️ Waiting {break_minutes} minutes before next cycle...")
             
             for remaining in range(break_minutes * 60, 0, -60):
                 minutes_left = remaining // 60
                 print(f"Next cycle in {minutes_left} minute(s)...")
                 await asyncio.sleep(60)
+                
+                # Check for browser switch during wait
+                if browser_manager.should_switch_browser():
+                    print("⏰ Browser switch time during break...")
+                    
+                    if current_browser:
+                        try:
+                            await current_browser.close()
+                            await current_p.stop()
+                        except:
+                            pass
+                    
+                    browser_manager.switch_browser()
+                    current_browser, current_context, current_page, current_p = await start_now_and_login_with_browser_type(browser_manager.current_browser)
             
             cycle_count += 1
+            current_batch_start = 0  # Reset for next cycle
     
     print(f"🎉 MAXIMUM BOOKINGS REACHED: {bookings_made} slots reserved!")
+    
+    # Clean up final browser session
+    if current_browser:
+        try:
+            await current_browser.close()
+            await current_p.stop()
+        except:
+            pass
+    
     return True
 
 
@@ -162,7 +222,7 @@ async def search_for_available_slots(page, max_attempts: int = 100, discord_webh
             
             # Continue searching
             await page.click("a#searchForWeeklySlotsNextAvailable")
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
             
         except Exception as e:
             print(f"❌ Error in attempt {attempt}: {e}")
