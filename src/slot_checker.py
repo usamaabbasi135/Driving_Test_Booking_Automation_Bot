@@ -8,11 +8,11 @@ from src.auth import start_now_and_login_with_browser_type
 # Updated main booking function
 async def booking_system_with_browser_rotation(page: Page, centres: list[str], attempts_per_batch: int = 50, 
                                               break_minutes: int = 10, discord_webhook: str = None,
-                                              max_bookings: int = 5):
+                                              max_bookings: int = 5,initial_browser="edge"):
     """
     Booking system with automatic browser switching every 15 minutes
     """
-    browser_manager = BrowserRotationManager()
+    browser_manager = BrowserRotationManager(initial_browser)
     total_centres = len(centres)
     batch_size = 3
     cycle_count = 1
@@ -194,15 +194,14 @@ async def search_for_available_slots(page, max_attempts: int = 100, discord_webh
             if green_boxes:
                 print("🎯 GREEN BOX FOUND! Clicking...")
                 await green_boxes[0].click()
-                await asyncio.sleep(3)  # Wait longer for page to load
+                await asyncio.sleep(0.5)  # Wait longer for page to load
                 
                 # Try instant reserve first
                 if await instant_reserve(page):
                     print("🚀 RESERVE BUTTON CLICKED!")
                     
-                    # Wait and verify booking was actually successful
-                    await asyncio.sleep(3)
-                    
+                    # Wait for page to update after reservation
+                    await asyncio.sleep(1)  # Just 1 second for page to update
                     if discord_webhook:
                         success = await handle_booking_success(page, discord_webhook)
                         if success:

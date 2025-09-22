@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 from playwright.async_api import Page
 
 class BrowserRotationManager:
-    def __init__(self):
-        self.current_browser = "chrome"
+    def __init__(self, initial_browser="chrome"):
+        self.current_browser = initial_browser
         self.session_start_time = datetime.now()
         self.session_duration_minutes = 15
         

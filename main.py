@@ -2,11 +2,12 @@ import asyncio
 from src.auth import start_now_and_login_with_browser_type
 from src.booking_form import fill_initial_booking, load_centres
 from src.slot_checker import booking_system_with_browser_rotation
+from config import BROWSER_TYPE, DISCORD_WEBHOOK
 
-discord_webhook = "https://discordapp.com/api/webhooks/1418172340784730156/5pk_P9HgixS2x15l-6AAVG8MaRE4oiG4zQRaUCLXoYcr-Vop6okDlnu5VGphSBkiztdU"
+discord_webhook = DISCORD_WEBHOOK
 async def main():
     # Step 1: Login + open booking form in new tab
-    browser, context, page,p = await start_now_and_login_with_browser_type("edge")
+    browser, context, page,p = await start_now_and_login_with_browser_type(BROWSER_TYPE)
 
     # Step 2: Confirm we’re on booking form
     print("📍 Current URL after login:", page.url)
@@ -52,7 +53,8 @@ async def main():
             attempts_per_batch=100,
             break_minutes=3,
             discord_webhook=discord_webhook,
-            max_bookings=3  # Set how many bookings you want
+            max_bookings=3, # Set how many bookings you want
+            initial_browser=BROWSER_TYPE
         )
         
         if success:

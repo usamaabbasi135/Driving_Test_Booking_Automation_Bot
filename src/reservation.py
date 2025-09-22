@@ -3,24 +3,17 @@ import asyncio
 from src.discord_notification import extract_booking_details,send_discord_notification,handle_booking_success
 
 async def instant_reserve(page: Page):
-    """Fast reservation with better error handling"""
-    selectors = [
-        "a:has-text('Reserve')",
-        "input[value*='Reserve']", 
-        "button:has-text('Reserve')"
-    ]
-    
-    for selector in selectors:
+    """Maximum speed reservation"""
+    try:
+        # Try first selector only with minimal timeout
+        await page.click("a:has-text('Reserve')", timeout=100)
+        return True
+    except:
         try:
-            await page.click(selector, timeout=3000)  # Increased to 500ms
-            print(f"⚡ INSTANT RESERVE CLICKED: {selector}")
+            await page.click("input[value*='Reserve']", timeout=100)
             return True
-        except Exception as e:
-            print(f"Failed {selector}: {str(e)[:50]}")
-            continue
-    
-    print("❌ No reserve buttons found")
-    return False
+        except:
+            return False
 
 async def return_to_search_results(page: Page):
     """
