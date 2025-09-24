@@ -7,12 +7,15 @@ async def instant_reserve(page: Page):
     try:
         # Try first selector only with minimal timeout
         await page.click("a:has-text('Reserve')", timeout=100)
+        print("Instant Reserve clicked")
         return True
     except:
         try:
             await page.click("input[value*='Reserve']", timeout=100)
+            print("Instant Reserve clicked")
             return True
-        except:
+        except Exception as e:
+            print("Cann't click on reserve button",e)
             return False
 
 async def return_to_search_results(page: Page):
@@ -56,7 +59,7 @@ async def handle_reservation_page(page: Page, discord_webhook: str = None):
     """
     try:
         print("📋 Checking reservation page for available slots...")
-        await asyncio.sleep(2)
+        
         
         # Look for any reserve buttons on the page
         all_reserve_buttons = await page.locator("a:has-text('Reserve'), input[value*='Reserve']").all()
@@ -69,7 +72,7 @@ async def handle_reservation_page(page: Page, discord_webhook: str = None):
                 try:
                     await button.click()
                     reserved_count += 1
-                    await asyncio.sleep(0.5)
+                    # await asyncio.sleep(0.5)
                 except:
                     continue
             

@@ -231,37 +231,42 @@ async def search_for_available_slots(page, max_attempts: int = 100, discord_webh
 
 async def check_for_green_calendar_boxes(page: Page):
     """
-    Generic function to find available slots (green boxes) without hardcoding IDs.
+    Slot checker with rewind:
+    - If year is not 2025 → keep clicking previous week until current week
+    - If 2025 → return green slots immediately
     """
     try:
-        # Method 1: Look for table cells with "slotsavailable" class (the green boxes)
-        available_cells = await page.locator("td.day.slotsavailable").all()
-        
-        if available_cells:
-            print(f"Found {len(available_cells)} green boxes (slotsavailable)")
-            # Get the clickable links inside these cells
-            available_links = []
-            for cell in available_cells:
-                links = await cell.locator("a").all()
-                available_links.extend(links)
-            return available_links
-        
-        # Method 2: Look for links that contain "view" text (available slots show "view")
-        view_links = await page.locator("td.day a:has-text('view')").all()
-        if view_links:
-            print(f"Found {len(view_links)} 'view' links in calendar")
-            return view_links
-        
-        # Method 3: Look for calendar day cells that don't have "none" class
-        non_empty_cells = await page.locator("td.day:not(.none):not(.nonenonotif) a").all()
-        if non_empty_cells:
-            print(f"Found {len(non_empty_cells)} non-empty calendar cells")
-            return non_empty_cells
-            
-        return []
-        
+        # Step 1: Grab week header text
+        week_header = await page.locator("div.span-7 p.centre.bold").inner_text()
+        week_header = week_header.strip()
+        print(f"📅 Week header: {week_header}")
+
+        # Step 2: If not 2025, rewind back to current week
+        if "2025" not in week_header:
+            print("⏩ Not a 2025 week, rewinding...")
+            while True:
+                try:
+                    previous_button = await page.locator("a#searchForWeeklySlotsPreviousWeek").count()
+                    if previous_button == 0:
+                        break
+                    await page.click("a#searchForWeeklySlotsPreviousWeek")
+                    await asyncio.sleep(0.5)
+                except:
+                    break
+            print("✅ Reached current week")
+            return []  # nothing booked this cycle
+
+        # Step 3: If 2025 → get green slots
+        available_cells = await page.locator("td.day.slotsavailable a").all()
+        if not available_cells:
+            print("❌ No green slots found in this week")
+            return []
+
+        print(f"🎯 Found {len(available_cells)} green slots in 2025")
+        return available_cells
+
     except Exception as e:
-        print(f"Error checking for green boxes: {e}")
+        print(f"⚠️ Error in slot check: {e}")
         return []
 
 async def remove_all_test_centres(page: Page):
