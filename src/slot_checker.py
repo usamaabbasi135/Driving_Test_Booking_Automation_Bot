@@ -183,91 +183,82 @@ async def add_test_centres_sequential(page: Page, centres: list[str], max_to_add
 
     
 async def search_for_available_slots(page, max_attempts: int = 100, discord_webhook: str = None):
-    """Updated search function with Discord notifications and verification"""
+    """Ultra-fast slot hunter"""
     print("🔍 Starting search for available slots...")
-    
+
     for attempt in range(1, max_attempts + 1):
         try:
             print(f"🔄 Attempt {attempt}/{max_attempts}: Checking calendar...")
             green_boxes = await check_for_green_calendar_boxes(page)
-            
+
             if green_boxes:
                 print("🎯 GREEN BOX FOUND! Clicking...")
                 await green_boxes[0].click()
-                await asyncio.sleep(0.5)  # Wait longer for page to load
-                
-                # Try instant reserve first
-                if await instant_reserve(page):
-                    print("🚀 RESERVE BUTTON CLICKED!")
-                    
-                    # Wait for page to update after reservation
-                    await asyncio.sleep(1)  # Just 1 second for page to update
-                    if discord_webhook:
-                        success = await handle_booking_success(page, discord_webhook)
-                        if success:
-                            print("✅ Notification sent for confirmed booking")
-                            return True
-                        else:
-                            print("⚠️ No notification sent - booking not confirmed")
-                
-                # Fallback to handle_reservation_page
-                result = await handle_reservation_page(page, discord_webhook)
-                if result == "RESERVATIONS_MADE":
+
+                # 🚀 Wait for reserve button and smash it instantly
+                try:
+                    reserve_button = page.locator(
+                        "a:has-text('Reserve'), input[value*='Reserve']"
+                    ).first
+
+                    await reserve_button.wait_for(state="visible", timeout=300)
+                    await reserve_button.click(timeout=50)
+
+                    print("🚀 RESERVE BUTTON CLICKED INSTANTLY!")
+
+                    # Don't waste time here — notify later
                     return True
-                elif result == "RETURNED_TO_SEARCH":
-                    continue
-                else:
-                    break
-            
-            # Continue searching
+
+                except Exception as e:
+                    print(f"❌ Reserve button not clickable fast enough: {e}")
+                    return False
+
+            # No green slot? Go to next week
             await page.click("a#searchForWeeklySlotsNextAvailable")
-            await asyncio.sleep(0.5)
-            
+            await page.wait_for_load_state("networkidle")  # faster than sleep
+
         except Exception as e:
             print(f"❌ Error in attempt {attempt}: {e}")
             continue
-    
+
     return False
+
 
 async def check_for_green_calendar_boxes(page: Page):
     """
     Slot checker with rewind:
-    - If year is not 2025 → keep clicking previous week until current week
-    - If 2025 → return green slots immediately
+    - If year is not 2025 → rewind to current week
+    - If 2025 → return green slots
     """
     try:
-        # Step 1: Grab week header text
-        week_header = await page.locator("div.span-7 p.centre.bold").inner_text()
-        week_header = week_header.strip()
+        week_header = (await page.locator("div.span-7 p.centre.bold").inner_text()).strip()
         print(f"📅 Week header: {week_header}")
 
-        # Step 2: If not 2025, rewind back to current week
         if "2025" not in week_header:
             print("⏩ Not a 2025 week, rewinding...")
             while True:
                 try:
-                    previous_button = await page.locator("a#searchForWeeklySlotsPreviousWeek").count()
-                    if previous_button == 0:
+                    if await page.locator("a#searchForWeeklySlotsPreviousWeek").count() == 0:
                         break
                     await page.click("a#searchForWeeklySlotsPreviousWeek")
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.2)
                 except:
                     break
             print("✅ Reached current week")
-            return []  # nothing booked this cycle
-
-        # Step 3: If 2025 → get green slots
-        available_cells = await page.locator("td.day.slotsavailable a").all()
-        if not available_cells:
-            print("❌ No green slots found in this week")
             return []
 
-        print(f"🎯 Found {len(available_cells)} green slots in 2025")
+        # Get all green slots immediately
+        available_cells = await page.locator("td.day.slotsavailable a").all()
+        if available_cells:
+            print(f"🎯 Found {len(available_cells)} green slots in 2025")
+        else:
+            print("❌ No green slots found in this week")
         return available_cells
 
     except Exception as e:
         print(f"⚠️ Error in slot check: {e}")
         return []
+
 
 async def remove_all_test_centres(page: Page):
     """
