@@ -3,20 +3,31 @@ import asyncio
 from src.discord_notification import extract_booking_details,send_discord_notification,handle_booking_success
 
 async def instant_reserve(page: Page):
-    """Maximum speed reservation"""
+    """Ultra-fast reservation by firing the reserve link request directly."""
     try:
-        # Try first selector only with minimal timeout
-        await page.click("a:has-text('Reserve')", timeout=100)
-        print("Instant Reserve clicked")
-        return True
-    except:
-        try:
-            await page.click("input[value*='Reserve']", timeout=100)
-            print("Instant Reserve clicked")
-            return True
-        except Exception as e:
-            print("Cann't click on reserve button",e)
-            return False
+        # Find first Reserve link on the page
+        reserve_locator = page.locator("a:has-text('Reserve'), input[value*='Reserve']")
+        href = await reserve_locator.first.get_attribute("href")
+
+        if href:
+            print(f"⚡ Direct reserve attempt → {href}")
+            
+            # Fire the request directly instead of clicking
+            response = await page.request.get(href)
+            print("🚀 Reserve request fired, status:", response.status)
+
+            if response.status == 200:
+                return True
+            else:
+                print("❌ Reserve request failed, status:", response.status)
+                return False
+
+        print("❌ No reserve link found on page")
+        return False
+
+    except Exception as e:
+        print("❌ Error in instant_reserve:", e)
+        return False
 
 async def return_to_search_results(page: Page):
     """
